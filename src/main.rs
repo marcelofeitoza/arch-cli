@@ -54,6 +54,8 @@ async fn main() -> Result<()> {
         Commands::Project(ProjectCommands::Deploy) => project_deploy(&config).await,
         Commands::Validator(ValidatorCommands::Start(args)) => validator_start(args, &config).await,
         Commands::Validator(ValidatorCommands::Stop) => validator_stop().await,
+        Commands::Token(TokenCommands::Mint(args)) => mint_tokens(args, &config).await,
+        Commands::Token(TokenCommands::Transfer(args)) => transfer_tokens(args, &config).await,
     };
 
     if let Err(e) = result {

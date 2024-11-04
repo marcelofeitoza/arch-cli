@@ -5,6 +5,7 @@ use arch_program::instruction::Instruction;
 use arch_program::message::Message;
 use arch_program::pubkey::Pubkey;
 use arch_program::system_instruction::SystemInstruction;
+use bip322::sign_message_bip322;
 use bitcoin::key::UntweakedKeypair;
 use bitcoin::Amount;
 use bitcoin::Network;
@@ -21,14 +22,13 @@ use config::{Config, Environment, File};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, Input, Select};
 use dirs::home_dir;
-use bip322::{sign_message_bip322};
+use include_dir::{include_dir, Dir};
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::rngs::OsRng;
 use secp256k1::Keypair;
 use secp256k1::{Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use webbrowser::open_browser;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -44,7 +44,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use tokio::task;
 use toml_edit::{value, Document, Item};
-use include_dir::{include_dir, Dir};
+use webbrowser::open_browser;
 
 use common::wallet_manager::*;
 
@@ -95,7 +95,9 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Initialize a new Arch Network app
-    #[clap(long_about = "Creates the project structure and configuration for a new Arch Network application.")]
+    #[clap(
+        long_about = "Creates the project structure and configuration for a new Arch Network application."
+    )]
     Init,
 
     /// Manage the development server
@@ -103,7 +105,9 @@ pub enum Commands {
     Server(ServerCommands),
 
     /// Deploy your Arch Network app
-    #[clap(long_about = "Builds and deploys your Arch Network application to the specified network.")]
+    #[clap(
+        long_about = "Builds and deploys your Arch Network application to the specified network."
+    )]
     Deploy(DeployArgs),
 
     /// Manage projects
@@ -145,20 +149,30 @@ pub enum Commands {
     /// Manage the validator
     #[clap(subcommand)]
     Validator(ValidatorCommands),
+
+    /// Manage tokens
+    #[clap(subcommand)]
+    Token(TokenCommands),
 }
 
 #[derive(Subcommand)]
 pub enum ServerCommands {
     /// Start the development server
-    #[clap(long_about = "Starts the local development environment, including Bitcoin regtest network and Arch Network nodes.")]
+    #[clap(
+        long_about = "Starts the local development environment, including Bitcoin regtest network and Arch Network nodes."
+    )]
     Start,
 
     /// Stop the development server
-    #[clap(long_about = "Stops all related Docker containers and services for the development environment.")]
+    #[clap(
+        long_about = "Stops all related Docker containers and services for the development environment."
+    )]
     Stop,
 
     /// Check the status of the development server
-    #[clap(long_about = "Displays the current status of all services in the development environment.")]
+    #[clap(
+        long_about = "Displays the current status of all services in the development environment."
+    )]
     Status,
 
     /// View logs for development server components
@@ -239,7 +253,9 @@ pub enum DemoCommands {
 #[derive(Subcommand)]
 pub enum AccountCommands {
     /// Create an account for the dApp
-    #[clap(long_about = "Creates an account for the dApp, prompts for funding, and transfers ownership to the program.")]
+    #[clap(
+        long_about = "Creates an account for the dApp, prompts for funding, and transfers ownership to the program."
+    )]
     Create(CreateAccountArgs),
 
     /// List all accounts
@@ -259,6 +275,25 @@ pub enum ConfigCommands {
     Edit,
     /// Reset configuration to default
     Reset,
+}
+
+#[derive(Subcommand)]
+pub enum TokenCommands {
+    Mint(MintArgs),
+    Transfer(TransferArgs),
+}
+
+#[derive(Args)]
+pub struct MintArgs {
+    pub account: String,
+    pub amount: u64,
+}
+
+#[derive(Args)]
+pub struct TransferArgs {
+    pub from: String,
+    pub to: String,
+    pub amount: u64,
 }
 
 #[derive(Args)]
@@ -411,7 +446,10 @@ pub async fn init() -> Result<()> {
         // Rename the .env.example file to .env
         let env_example_file = PathBuf::from(&demo_dir).join("app/frontend/.env.example");
         if env_example_file.exists() {
-            fs::rename(&env_example_file, PathBuf::from(&demo_dir).join("app/frontend/.env"))?;
+            fs::rename(
+                &env_example_file,
+                PathBuf::from(&demo_dir).join("app/frontend/.env"),
+            )?;
         }
 
         // Change to the demo directory
@@ -862,7 +900,8 @@ pub async fn server_start(config: &Config) -> Result<()> {
     env::set_var("ARCH_DATA_DIR", arch_data_dir.to_str().unwrap());
 
     // Get the selected network from the config
-    let selected_network = config.get_string("selected_network")
+    let selected_network = config
+        .get_string("selected_network")
         .unwrap_or_else(|_| "development".to_string());
 
     // Set environment variables for the selected network
@@ -1214,12 +1253,20 @@ fn check_service_status(service_name: &str, service_config: &ServiceConfig) -> R
 }
 
 pub async fn server_logs(service: &str, config: &Config) -> Result<()> {
-    println!("{}", format!("Fetching logs for {}...", service).bold().blue());
+    println!(
+        "{}",
+        format!("Fetching logs for {}...", service).bold().blue()
+    );
 
-    let network_type = config.get_string("selected_network").unwrap_or_else(|_| "development".to_string());
+    let network_type = config
+        .get_string("selected_network")
+        .unwrap_or_else(|_| "development".to_string());
 
     if network_type != "development" && network_type != "development2" {
-        println!("  {} Logs are not available for non-development networks", "ℹ".bold().blue());
+        println!(
+            "  {} Logs are not available for non-development networks",
+            "ℹ".bold().blue()
+        );
         return Ok(());
     }
 
@@ -1237,7 +1284,8 @@ pub async fn server_logs(service: &str, config: &Config) -> Result<()> {
         };
 
         if let Ok(services) = config.get_array(&config_key) {
-            let service_names: Vec<String> = services.iter()
+            let service_names: Vec<String> = services
+                .iter()
                 .filter_map(|v| Some(v.to_string()))
                 .collect();
 
@@ -1741,9 +1789,9 @@ pub fn load_config(network: &str) -> Result<Config> {
     let config_path = get_config_path()?;
     let config_dir = config_path.parent().unwrap().to_str().unwrap().to_string();
     println!("Loading config for network: {}", network);
-    
+
     let mut builder = Config::builder();
-    
+
     // Check if the config file exists
     if config_path.exists() {
         builder = builder.add_source(File::with_name(config_path.to_str().unwrap()));
@@ -1798,12 +1846,9 @@ pub fn load_config(network: &str) -> Result<Config> {
     builder = builder.set_override("selected_network", network.to_string())?;
 
     // Build the final configuration
-    let final_config = builder
-        .build()
-        .context("Failed to build configuration")?;
+    let final_config = builder.build().context("Failed to build configuration")?;
 
     Ok(final_config)
-
 }
 pub fn get_arch_data_dir(config: &Config) -> Result<PathBuf> {
     let config_dir = config.get_string("config_dir")?;
@@ -2084,7 +2129,11 @@ fn select_existing_key(keys: &mut Value) -> Result<(secp256k1::Keypair, Pubkey)>
         let keys_file = get_config_dir()?.join("keys.json");
         fs::write(&keys_file, serde_json::to_string_pretty(keys)?)?;
 
-        println!("  {} Created and saved new key '{}'", "✓".bold().green(), new_key_name);
+        println!(
+            "  {} Created and saved new key '{}'",
+            "✓".bold().green(),
+            new_key_name
+        );
 
         Ok((keypair, pubkey))
     } else {
@@ -2176,7 +2225,8 @@ async fn ensure_wallet_balance(client: &Client) -> Result<()> {
             "→".blue()
         );
         let new_address = client.get_new_address(None, None)?;
-        let checked_address = new_address.require_network(arch_program::bitcoin::Network::Regtest)?;
+        let checked_address =
+            new_address.require_network(arch_program::bitcoin::Network::Regtest)?;
         client.generate_to_address(101, &checked_address)?;
         println!("  {} Initial blocks generated", "✓".green());
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -2291,9 +2341,8 @@ async fn deploy_program(
     deploy_program_txs_with_folder(program_keypair, program_pubkey, deploy_folder, config).await?;
 
     // Make program executable
-    tokio::task::block_in_place( move || {
-        make_program_executable(program_keypair, program_pubkey)
-    }).await?;
+    tokio::task::block_in_place(move || make_program_executable(program_keypair, program_pubkey))
+        .await?;
 
     Ok(())
 }
@@ -2320,7 +2369,11 @@ fn build_program_from_path(program_dir: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn deploy_program_from_path(program_dir: &PathBuf, config: &Config, program_keypair: Option<(Keypair, Pubkey)>) -> Result<()> {
+async fn deploy_program_from_path(
+    program_dir: &PathBuf,
+    config: &Config,
+    program_keypair: Option<(Keypair, Pubkey)>,
+) -> Result<()> {
     println!("  ℹ Deploying program...");
 
     // Prepare program keys if not provided
@@ -2363,22 +2416,28 @@ async fn make_program_executable(program_keypair: &Keypair, program_pubkey: &Pub
 
     let keypair = program_keypair.clone();
 
-    let (txid, _) = tokio::task::spawn_blocking(move || {
-        sign_and_send_instruction(instruction, vec![keypair])
-    }).await??;
+    let (txid, _) =
+        tokio::task::spawn_blocking(move || sign_and_send_instruction(instruction, vec![keypair]))
+            .await??;
 
     println!("    Transaction sent: {}", txid);
     tokio::task::spawn_blocking(move || {
         get_processed_transaction(&NODE1_ADDRESS.to_string(), txid.clone())
-    }).await??;
+    })
+    .await??;
     println!("    Program made executable successfully");
     Ok(())
 }
 
-pub async fn deploy_program_txs(program_keypair: &Keypair, elf_path: &str, config: &Config) -> Result<()> {
+pub async fn deploy_program_txs(
+    program_keypair: &Keypair,
+    elf_path: &str,
+    config: &Config,
+) -> Result<()> {
     let program_pubkey = Pubkey::from_slice(&program_keypair.public_key().serialize()[1..33]);
 
-    let network = config.get_string("bitcoin.network")
+    let network = config
+        .get_string("bitcoin.network")
         .unwrap_or_else(|_| "regtest".to_string());
     let bitcoin_network =
         Network::from_str(&network).context("Invalid Bitcoin network specified in config")?;
@@ -2406,7 +2465,7 @@ pub async fn deploy_program_txs(program_keypair: &Keypair, elf_path: &str, confi
                 )],
             };
 
-            let digest_slice =message.hash();
+            let digest_slice = message.hash();
 
             RuntimeTransaction {
                 version: 0,
@@ -2418,13 +2477,13 @@ pub async fn deploy_program_txs(program_keypair: &Keypair, elf_path: &str, confi
         })
         .collect::<Vec<RuntimeTransaction>>();
 
-
     let txids: Vec<String> = {
         let node_address = NODE1_ADDRESS.to_string();
         let txs_clone = txs.clone(); // Clone if necessary
-        let response = task::spawn_blocking(move || {
-            post_data(&node_address, "send_transactions", txs_clone)
-        }).await.expect("Task panicked");
+        let response =
+            task::spawn_blocking(move || post_data(&node_address, "send_transactions", txs_clone))
+                .await
+                .expect("Task panicked");
 
         process_result(response)
             .map_err(|e| anyhow!("Failed to process result: {}", e))?
@@ -2435,7 +2494,6 @@ pub async fn deploy_program_txs(program_keypair: &Keypair, elf_path: &str, confi
             .collect()
     };
 
-
     let pb = ProgressBar::new(txids.len() as u64);
 
     pb.set_style(ProgressStyle::default_bar()
@@ -2445,7 +2503,9 @@ pub async fn deploy_program_txs(program_keypair: &Keypair, elf_path: &str, confi
     pb.set_message("Successfully Processed Deployment Transactions :");
 
     for txid in txids {
-        let _processed_tx = task::spawn_blocking(move || get_processed_transaction(NODE1_ADDRESS, txid.clone())).await;
+        let _processed_tx =
+            task::spawn_blocking(move || get_processed_transaction(NODE1_ADDRESS, txid.clone()))
+                .await;
         pb.inc(1);
         pb.set_message("Successfully Processed Deployment Transactions :");
     }
@@ -2509,9 +2569,13 @@ async fn create_program_account(
             ),
             vec![program_keypair_clone],
         )
-    }).await??;
+    })
+    .await??;
 
-    let _ = tokio::task::spawn_blocking(move || get_processed_transaction(&NODE1_ADDRESS.to_string(), txid.clone())).await;
+    let _ = tokio::task::spawn_blocking(move || {
+        get_processed_transaction(&NODE1_ADDRESS.to_string(), txid.clone())
+    })
+    .await;
     println!("    Program account created successfully");
     Ok(())
 }
@@ -2520,7 +2584,8 @@ pub async fn demo_start(config: &Config) -> Result<()> {
     println!("{}", "Starting the demo application...".bold().green());
 
     // Get the selected network from the config
-    let selected_network = config.get_string("selected_network")
+    let selected_network = config
+        .get_string("selected_network")
         .unwrap_or_else(|_| "development".to_string());
 
     // Set environment variables for the selected network
@@ -2555,7 +2620,10 @@ pub async fn demo_start(config: &Config) -> Result<()> {
         // Rename the .env.example file to .env
         let env_example_file = PathBuf::from(&demo_dir).join("app/frontend/.env.example");
         if env_example_file.exists() {
-            fs::rename(&env_example_file, PathBuf::from(&demo_dir).join("app/frontend/.env"))?;
+            fs::rename(
+                &env_example_file,
+                PathBuf::from(&demo_dir).join("app/frontend/.env"),
+            )?;
         }
 
         println!(
@@ -2600,10 +2668,14 @@ pub async fn demo_start(config: &Config) -> Result<()> {
         println!("Creating account with name: {}", graffiti_key_name);
 
         // Call create_account with the graffiti_key_name
-        create_account(&CreateAccountArgs {
-            name: graffiti_key_name.clone(),
-            program_id: None,
-        }, config).await?;
+        create_account(
+            &CreateAccountArgs {
+                name: graffiti_key_name.clone(),
+                program_id: None,
+            },
+            config,
+        )
+        .await?;
 
         // Set the program_pubkey to the pubkey of the graffiti account
         program_pubkey = get_pubkey_from_name(&graffiti_key_name, &keys_file)?;
@@ -2611,7 +2683,10 @@ pub async fn demo_start(config: &Config) -> Result<()> {
         // Write the program_pubkey into the app/frontend/.env file
         let env_file = PathBuf::from(&demo_dir).join("app/frontend/.env");
         let mut env_content = fs::read_to_string(&env_file).context("Failed to read .env file")?;
-        env_content = env_content.replace("VITE_PROGRAM_PUBKEY=", &format!("VITE_PROGRAM_PUBKEY={}", program_pubkey));
+        env_content = env_content.replace(
+            "VITE_PROGRAM_PUBKEY=",
+            &format!("VITE_PROGRAM_PUBKEY={}", program_pubkey),
+        );
         fs::write(&env_file, env_content).context("Failed to write to .env file")?;
     } else {
         // If program_pubkey is not empty, we need to find the corresponding key name
@@ -2627,8 +2702,9 @@ pub async fn demo_start(config: &Config) -> Result<()> {
     deploy_program_from_path(
         &PathBuf::from(&demo_dir).join("app/program"),
         config,
-        Some((program_keypair.clone(), program_pubkey))
-    ).await?;
+        Some((program_keypair.clone(), program_pubkey)),
+    )
+    .await?;
 
     // Make the program executable
     make_program_executable(&program_keypair, &program_pubkey).await?;
@@ -2636,13 +2712,23 @@ pub async fn demo_start(config: &Config) -> Result<()> {
     let graffiti_wall_state_exists = key_name_exists(&keys_file, "graffiti_wall_state")?;
 
     if graffiti_wall_state_exists {
-        println!("  {} Using existing graffiti_wall_state account", "ℹ".bold().blue());
+        println!(
+            "  {} Using existing graffiti_wall_state account",
+            "ℹ".bold().blue()
+        );
     } else {
-        println!("  {} Creating new graffiti_wall_state account", "ℹ".bold().blue());
-        create_account(&CreateAccountArgs {
-            name: "graffiti_wall_state".to_string(),
-            program_id: Some(hex::encode(program_pubkey.serialize())),
-        }, config).await?;
+        println!(
+            "  {} Creating new graffiti_wall_state account",
+            "ℹ".bold().blue()
+        );
+        create_account(
+            &CreateAccountArgs {
+                name: "graffiti_wall_state".to_string(),
+                program_id: Some(hex::encode(program_pubkey.serialize())),
+            },
+            config,
+        )
+        .await?;
     }
 
     // Get the public key of the graffiti_wall_state account
@@ -2651,7 +2737,10 @@ pub async fn demo_start(config: &Config) -> Result<()> {
     // Write the graffiti_wall_state public key into the app/frontend/.env file
     let env_file = PathBuf::from(&demo_dir).join("app/frontend/.env");
     let mut env_content = fs::read_to_string(&env_file).context("Failed to read .env file")?;
-    env_content = env_content.replace("VITE_WALL_ACCOUNT_PUBKEY=", &format!("VITE_WALL_ACCOUNT_PUBKEY={}", graffiti_wall_state_pubkey));
+    env_content = env_content.replace(
+        "VITE_WALL_ACCOUNT_PUBKEY=",
+        &format!("VITE_WALL_ACCOUNT_PUBKEY={}", graffiti_wall_state_pubkey),
+    );
     fs::write(&env_file, env_content).context("Failed to write to .env file")?;
 
     // Stop existing demo containers
@@ -2692,7 +2781,11 @@ pub async fn demo_start(config: &Config) -> Result<()> {
     if !remove_network_output.status.success() {
         let error_message = String::from_utf8_lossy(&remove_network_output.stderr);
         if !error_message.contains("not found") {
-            println!("  {} Warning: Failed to remove arch-network: {}", "⚠".bold().yellow(), error_message);
+            println!(
+                "  {} Warning: Failed to remove arch-network: {}",
+                "⚠".bold().yellow(),
+                error_message
+            );
         }
     }
 
@@ -2712,7 +2805,10 @@ pub async fn demo_start(config: &Config) -> Result<()> {
         }
     }
 
-    println!("  {} arch-network created or already exists", "✓".bold().green());
+    println!(
+        "  {} arch-network created or already exists",
+        "✓".bold().green()
+    );
 
     // Start the demo application
     println!("  {} Starting demo containers...", "→".bold().blue());
@@ -2738,7 +2834,10 @@ pub async fn demo_start(config: &Config) -> Result<()> {
     );
 
     // Open the browser with the demo application
-    if let Err(e) = open_browser(webbrowser::Browser::Default, &format!("http://localhost:5173")) {
+    if let Err(e) = open_browser(
+        webbrowser::Browser::Default,
+        &format!("http://localhost:5173"),
+    ) {
         return Err(anyhow!("Failed to open the browser: {}", e));
     }
 
@@ -2757,15 +2856,23 @@ fn find_key_name_by_pubkey(keys_file: &PathBuf, pubkey: &str) -> Result<String> 
 
 fn get_pubkey_from_name(name: &str, keys_file: &Path) -> Result<String> {
     let keys = serde_json::from_str::<serde_json::Value>(&fs::read_to_string(keys_file)?)?;
-    let pubkey = keys.get(name).context(format!("Key with name '{}' not found", name))?;
-    let pubkey = pubkey.get("public_key").context(format!("Public key for '{}' not found", name))?;
-    Ok(pubkey.as_str().context(format!("Public key for '{}' is not a string", name))?.to_string())
+    let pubkey = keys
+        .get(name)
+        .context(format!("Key with name '{}' not found", name))?;
+    let pubkey = pubkey
+        .get("public_key")
+        .context(format!("Public key for '{}' not found", name))?;
+    Ok(pubkey
+        .as_str()
+        .context(format!("Public key for '{}' is not a string", name))?
+        .to_string())
 }
 
 fn get_keypair_from_name(name: &str, keys_file: &PathBuf) -> Result<Keypair> {
     let keys = load_keys(keys_file)?;
 
-    let key_info = keys.as_object()
+    let key_info = keys
+        .as_object()
         .and_then(|obj| obj.get(name))
         .ok_or_else(|| anyhow!("Key with name '{}' not found", name))?;
 
@@ -2784,7 +2891,8 @@ pub async fn demo_stop(config: &Config) -> Result<()> {
     println!("{}", "Stopping the demo application...".bold().green());
 
     // Get the selected network from the config
-    let selected_network = config.get_string("selected_network")
+    let selected_network = config
+        .get_string("selected_network")
         .unwrap_or_else(|_| "development".to_string());
 
     // Set environment variables for the selected network
@@ -3226,8 +3334,14 @@ pub fn ensure_keys_dir() -> Result<PathBuf> {
 
 async fn generate_account_address(caller_pubkey: Pubkey) -> Result<String> {
     // Get program account address from network
-    let account_address = tokio::task::spawn_blocking(move || get_account_address(caller_pubkey)).await.unwrap();
-    println!("  {} Account address: {}", "ℹ".bold().blue(), account_address.yellow());
+    let account_address = tokio::task::spawn_blocking(move || get_account_address(caller_pubkey))
+        .await
+        .unwrap();
+    println!(
+        "  {} Account address: {}",
+        "ℹ".bold().blue(),
+        account_address.yellow()
+    );
 
     Ok(account_address)
 }
@@ -3297,6 +3411,7 @@ async fn create_arch_account(
         Ok(())
     }
 }
+
 async fn transfer_account_ownership(
     caller_keypair: &Keypair,
     account_pubkey: &Pubkey,
@@ -3342,7 +3457,8 @@ pub async fn indexer_start(config: &Config) -> Result<()> {
     let arch_node_url = config.get_string("leader_rpc_endpoint")?;
 
     // Get the selected network from the config
-    let selected_network = config.get_string("selected_network")
+    let selected_network = config
+        .get_string("selected_network")
         .unwrap_or_else(|_| "development".to_string());
 
     // Set environment variables for the selected network
@@ -3358,8 +3474,7 @@ pub async fn indexer_start(config: &Config) -> Result<()> {
     let original_dir = env::current_dir()?;
 
     // Change to the indexer directory
-    env::set_current_dir(&indexer_dir)
-        .context("Failed to change to indexer directory")?;
+    env::set_current_dir(&indexer_dir).context("Failed to change to indexer directory")?;
 
     // Start the indexer using docker-compose
     let output = ShellCommand::new("docker-compose")
@@ -3373,8 +3488,7 @@ pub async fn indexer_start(config: &Config) -> Result<()> {
         .context("Failed to start the arch-indexer using Docker Compose")?;
 
     // Change back to the original directory
-    env::set_current_dir(original_dir)
-        .context("Failed to change back to original directory")?;
+    env::set_current_dir(original_dir).context("Failed to change back to original directory")?;
 
     if !output.status.success() {
         return Err(anyhow!(
@@ -3397,7 +3511,10 @@ fn get_indexer_dir() -> Result<PathBuf> {
 fn clone_or_update_repo(indexer_dir: &Path) -> Result<()> {
     if indexer_dir.join(".git").exists() {
         // Repository already exists, update it
-        println!("  {} Updating arch-indexer repository...", "→".bold().blue());
+        println!(
+            "  {} Updating arch-indexer repository...",
+            "→".bold().blue()
+        );
         let status = ShellCommand::new("git")
             .current_dir(indexer_dir)
             .args(&["pull", "origin", "main"])
@@ -3432,7 +3549,8 @@ pub async fn indexer_stop(config: &Config) -> Result<()> {
     println!("{}", "Stopping the arch-indexer...".bold().green());
 
     // Get the selected network from the config
-    let selected_network = config.get_string("selected_network")
+    let selected_network = config
+        .get_string("selected_network")
         .unwrap_or_else(|_| "development".to_string());
 
     // Set environment variables for the selected network
@@ -3444,8 +3562,7 @@ pub async fn indexer_stop(config: &Config) -> Result<()> {
     let original_dir = env::current_dir()?;
 
     // Change to the indexer directory
-    env::set_current_dir(&indexer_dir)
-        .context("Failed to change to indexer directory")?;
+    env::set_current_dir(&indexer_dir).context("Failed to change to indexer directory")?;
 
     let output = ShellCommand::new("docker-compose")
         .arg("-f")
@@ -3464,8 +3581,7 @@ pub async fn indexer_stop(config: &Config) -> Result<()> {
     println!("{}", "arch-indexer stopped successfully!".bold().green());
 
     // Change back to the original directory
-    env::set_current_dir(original_dir)
-        .context("Failed to change back to original directory")?;
+    env::set_current_dir(original_dir).context("Failed to change back to original directory")?;
 
     Ok(())
 }
@@ -3486,7 +3602,8 @@ pub async fn indexer_clean(config: &Config) -> Result<()> {
     }
 
     // Get the selected network from the config
-    let selected_network = config.get_string("selected_network")
+    let selected_network = config
+        .get_string("selected_network")
         .unwrap_or_else(|_| "development".to_string());
 
     // Set environment variables for the selected network
@@ -3599,7 +3716,12 @@ pub async fn validator_start(args: &ValidatorStartArgs, config: &Config) -> Resu
 }
 
 pub async fn validator_stop() -> Result<()> {
-    println!("{}", "Stopping and removing the local validator...".bold().green());
+    println!(
+        "{}",
+        "Stopping and removing the local validator..."
+            .bold()
+            .green()
+    );
 
     // Stop the container
     let stop_output = ShellCommand::new("docker")
@@ -3621,7 +3743,7 @@ pub async fn validator_stop() -> Result<()> {
     // Remove the container and its volumes
     let remove_output = ShellCommand::new("docker")
         .arg("rm")
-        .arg("-v")  // -v flag removes volumes associated with the container
+        .arg("-v") // -v flag removes volumes associated with the container
         .arg("local_validator")
         .output()
         .context("Failed to remove the local validator container")?;
@@ -3633,14 +3755,19 @@ pub async fn validator_stop() -> Result<()> {
         ));
     }
 
-    println!("{}", "Local validator stopped and removed successfully!".bold().green());
+    println!(
+        "{}",
+        "Local validator stopped and removed successfully!"
+            .bold()
+            .green()
+    );
     Ok(())
 }
 
 pub async fn project_create(args: &CreateProjectArgs, config: &Config) -> Result<()> {
     ensure_global_config()?;
     println!("{}", "Creating a new project...".bold().green());
-    
+
     // Get the project directory from the config or prompt the user
     let project_dir = match config.get_string("project.directory") {
         Ok(dir) => PathBuf::from(dir),
@@ -3679,7 +3806,9 @@ pub async fn project_create(args: &CreateProjectArgs, config: &Config) -> Result
     if new_project_dir.exists() {
         println!(
             "{}",
-            format!("A project named '{}' already exists.", project_name).bold().red()
+            format!("A project named '{}' already exists.", project_name)
+                .bold()
+                .red()
         );
         return Err(anyhow!("Project already exists"));
     }
@@ -3706,14 +3835,23 @@ pub async fn project_create(args: &CreateProjectArgs, config: &Config) -> Result
     // Create Vite app using npm
     println!("Creating Vite application...");
     let create_vite_output = std::process::Command::new("npm")
-        .args(["create", "vite@latest", "frontend", "--", "--template", "react"])
+        .args([
+            "create",
+            "vite@latest",
+            "frontend",
+            "--",
+            "--template",
+            "react",
+        ])
         .current_dir(&app_dir)
         .output()
         .context("Failed to create Vite application")?;
 
     if !create_vite_output.status.success() {
-        return Err(anyhow!("Failed to create Vite application: {}",
-            String::from_utf8_lossy(&create_vite_output.stderr)));
+        return Err(anyhow!(
+            "Failed to create Vite application: {}",
+            String::from_utf8_lossy(&create_vite_output.stderr)
+        ));
     }
     println!("  {} Created Vite application", "✓".bold().green());
 
@@ -3726,8 +3864,10 @@ pub async fn project_create(args: &CreateProjectArgs, config: &Config) -> Result
         .context("Failed to install base dependencies")?;
 
     if !install_output.status.success() {
-        return Err(anyhow!("Failed to install base dependencies: {}",
-            String::from_utf8_lossy(&install_output.stderr)));
+        return Err(anyhow!(
+            "Failed to install base dependencies: {}",
+            String::from_utf8_lossy(&install_output.stderr)
+        ));
     }
     println!("  {} Installed base dependencies", "✓".bold().green());
 
@@ -3741,8 +3881,10 @@ pub async fn project_create(args: &CreateProjectArgs, config: &Config) -> Result
         .context("Failed to install additional packages")?;
 
     if !install_additional_output.status.success() {
-        return Err(anyhow!("Failed to install additional packages: {}",
-            String::from_utf8_lossy(&install_additional_output.stderr)));
+        return Err(anyhow!(
+            "Failed to install additional packages: {}",
+            String::from_utf8_lossy(&install_additional_output.stderr)
+        ));
     }
     println!("  {} Installed additional packages", "✓".bold().green());
 
@@ -3756,11 +3898,22 @@ pub async fn project_create(args: &CreateProjectArgs, config: &Config) -> Result
     println!("\n{}", "Next steps:".bold().yellow());
     println!(
         "  1. Navigate to {} to find the Rust program template",
-        new_project_dir.join("app").join("program").display().to_string().yellow()
+        new_project_dir
+            .join("app")
+            .join("program")
+            .display()
+            .to_string()
+            .yellow()
     );
     println!("  2. Edit the source code to implement your program logic");
-    println!("  3. When ready, run {} to compile and deploy your program to the network", "arch-cli deploy".cyan());
-    println!("\n{}", "Need help? Check out our documentation at https://arch-network.github.io/docs/".italic());
+    println!(
+        "  3. When ready, run {} to compile and deploy your program to the network",
+        "arch-cli deploy".cyan()
+    );
+    println!(
+        "\n{}",
+        "Need help? Check out our documentation at https://arch-network.github.io/docs/".italic()
+    );
 
     Ok(())
 }
@@ -3869,8 +4022,12 @@ fn copy_template_files() -> Result<()> {
                 "init.sh" => include_str!("../templates/init.sh"),
                 "bootnode.sh" => include_str!("../templates/bootnode.sh"),
                 "arch-docker-compose.yml" => include_str!("../templates/arch-docker-compose.yml"),
-                "bitcoin-docker-compose.yml" => include_str!("../templates/bitcoin-docker-compose.yml"),
-                "btc-rpc-explorer.dockerfile" => include_str!("../templates/btc-rpc-explorer.dockerfile"),
+                "bitcoin-docker-compose.yml" => {
+                    include_str!("../templates/bitcoin-docker-compose.yml")
+                }
+                "btc-rpc-explorer.dockerfile" => {
+                    include_str!("../templates/btc-rpc-explorer.dockerfile")
+                }
                 "leader.sh" => include_str!("../templates/leader.sh"),
                 "validator.sh" => include_str!("../templates/validator.sh"),
                 _ => return Err(anyhow!("Unknown template file: {}", template)),
@@ -3880,5 +4037,96 @@ fn copy_template_files() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+pub async fn mint_tokens(args: &MintArgs, config: &Config) -> Result<()> {
+    println!("{}", "Minting tokens...".bold().blue());
+
+    let wallet_manager = WalletManager::new(config)?;
+
+    let mint_account =
+        Pubkey::from_slice(&hex::decode(&args.account).context("Invalid mint account address")?);
+
+    let instruction = Instruction {
+        program_id: Pubkey::system_program(),
+        accounts: vec![AccountMeta {
+            pubkey: mint_account,
+            is_signer: false,
+            is_writable: true,
+        }],
+        data: {
+            let mut data = vec![0u8];
+            data.extend_from_slice(&args.amount.to_le_bytes());
+            data
+        },
+    };
+
+    let tx = sign_and_send_transaction(vec![instruction], vec![])
+        .map_err(|e| anyhow!("Failed to mint tokens: {}", e))?;
+
+    println!(
+        "{} Minted {} tokens to account {}. Transaction ID: {}",
+        "✓".bold().green(),
+        args.amount,
+        mint_account,
+        tx
+    );
+
+    wallet_manager.close_wallet()?;
+
+    Ok(())
+}
+
+pub async fn transfer_tokens(args: &TransferArgs, config: &Config) -> Result<()> {
+    println!("{}", "Transferring tokens...".bold().blue());
+
+    // Get wallet manager and verify connection
+    let wallet_manager = WalletManager::new(config)?;
+
+    // Convert account strings to Pubkeys
+    let from_account =
+        Pubkey::from_slice(&hex::decode(&args.from).context("Invalid source address hex")?);
+    let to_account =
+        Pubkey::from_slice(&hex::decode(&args.to).context("Invalid destination address hex")?);
+
+    // Create transfer instruction
+    let instruction = Instruction {
+        program_id: Pubkey::system_program(),
+        accounts: vec![
+            AccountMeta {
+                pubkey: from_account,
+                is_signer: true,
+                is_writable: true,
+            },
+            AccountMeta {
+                pubkey: to_account,
+                is_signer: false,
+                is_writable: true,
+            },
+        ],
+        // Instruction data: [1] for transfer, followed by amount
+        data: {
+            let mut data = vec![1u8];
+            data.extend_from_slice(&args.amount.to_le_bytes());
+            data
+        },
+    };
+
+    // Sign and send transaction
+    let tx = sign_and_send_transaction(vec![instruction], vec![])
+        .map_err(|e| anyhow!("Failed to transfer tokens: {}", e))?;
+
+    println!(
+        "{} Transferred {} tokens from {} to {}. Transaction ID: {}",
+        "✓".bold().green(),
+        args.amount,
+        from_account,
+        to_account,
+        tx
+    );
+
+    // Close wallet connection
+    wallet_manager.close_wallet()?;
     Ok(())
 }
